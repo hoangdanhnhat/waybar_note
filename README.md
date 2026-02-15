@@ -66,7 +66,7 @@ Then add `"custom/notes"` to your modules list:
 - wezterm: `"wezterm -e $HOME/.local/bin/notes_tui.py"`
 - gnome-terminal: `"gnome-terminal -- $HOME/.local/bin/notes_tui.py"`
 
-### 2. Add CSS Styling
+### 2. Add CSS Styling ( Have not work yet on my machine... )
 
 Add the contents of `waybar-style.css` to `~/.config/waybar/style.css`.
 
