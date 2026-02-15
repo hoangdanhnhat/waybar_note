@@ -1,0 +1,18 @@
+{
+    // Waybar Notes Module Configuration
+    // Add this to your waybar config.json in the "modules-right" or "modules-left" section
+    // Example: "modules-right": ["custom/notes", "clock", "tray"]
+    
+    "custom/notes": {
+        "exec": "/path/to/waybar_notes.py",
+        "return-type": "json",
+        "interval": 1,
+        "format": "{}",
+        "on-click": "alacritty -e /path/to/notes_tui.py",
+        // Alternative terminal options:
+        // "on-click": "kitty -e /path/to/notes_tui.py",
+        // "on-click": "foot -e /path/to/notes_tui.py",
+        // "on-click": "wezterm -e /path/to/notes_tui.py",
+        "tooltip": true
+    }
+}
