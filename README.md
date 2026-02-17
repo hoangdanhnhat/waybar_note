@@ -18,6 +18,13 @@ A sleek, efficient notes/task manager for Waybar that helps you stay on top of y
 
 ## Installation
 
+### Create python virtual environment
+
+```python
+python -m venv .venv
+source ./venv/bin/activate
+```
+
 ### Quick Install
 
 ```bash
