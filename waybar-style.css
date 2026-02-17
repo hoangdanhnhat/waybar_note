@@ -1,0 +1,31 @@
+/* Waybar Notes Module Styles */
+/* Add this to your waybar style.css file */
+
+#custom-notes {
+    padding: 0 12px;
+    margin: 0 4px;
+    border-radius: 8px;
+    background: rgba(30, 30, 46, 0.8);
+    color: #cdd6f4;
+    font-weight: 500;
+    transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    min-width: 180px;
+}
+
+#custom-notes.active {
+    background: rgba(137, 180, 250, 0.15);
+    color: #89b4fa;
+    border: 1px solid rgba(137, 180, 250, 0.3);
+}
+
+#custom-notes.empty {
+    background: rgba(88, 91, 112, 0.2);
+    color: #585b70;
+    font-style: italic;
+}
+
+#custom-notes:hover {
+    background: rgba(137, 180, 250, 0.25);
+    color: #89b4fa;
+    box-shadow: 0 6px 16px rgba(137, 180, 250, 0.2);
+}

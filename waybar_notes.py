@@ -27,7 +27,7 @@ def main():
     
     if not undone:
         output = {
-            "text": "  No tasks",
+            "text": " No tasks",
             "tooltip": "Click to manage notes\nNo pending tasks",
             "class": "empty",
             "alt": "empty"
@@ -44,7 +44,7 @@ def main():
             tooltip_lines.append(f"{prefix}{escape_text(note['text'])}")
         
         output = {
-            "text": f"📝 {escape_text(truncate_text(current_note['text'], 40))}",
+            "text": f"{escape_text(truncate_text(current_note['text'], 40))}",
             "tooltip": "\n".join(tooltip_lines),
             "class": "active",
             "alt": "active"
