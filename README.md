@@ -1,3 +1,5 @@
+** NOTE : To intergrate this app with Google Tasks, check out the google-tasks branch **
+
 # Waybar Notes Manager
 
 A sleek, efficient notes/task manager for Waybar that helps you stay on top of your todos without leaving your bar.
