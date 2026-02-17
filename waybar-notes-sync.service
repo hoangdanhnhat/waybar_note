@@ -1,0 +1,13 @@
+[Unit]
+Description=Waybar Notes - Google Tasks Sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/google_tasks_sync.py --pull
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
