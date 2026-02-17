@@ -106,7 +106,9 @@ class GoogleTasksSync:
         default_list_name = task_lists[0]['title']
         
         local_notes = self.nm.get_all_notes()
+        local_ids = {str(note['id']) for note in local_notes}
         
+        # Create or update existing notes
         for note in local_notes:
             local_id = str(note['id'])
             
@@ -126,6 +128,26 @@ class GoogleTasksSync:
                         'list_id': default_list_id,
                         'list_name': default_list_name
                     }
+        
+        # Delete tasks that were deleted locally
+        local_ids_to_delete = []
+        for local_id, mapping in self.sync_state['mapping'].items():
+            if local_id not in local_ids:
+                # Task was deleted locally, delete from Google
+                if isinstance(mapping, dict):
+                    google_id = mapping['task_id']
+                    list_id = mapping['list_id']
+                else:
+                    # Old format compatibility
+                    google_id = mapping
+                    list_id = default_list_id
+                
+                self.delete_google_task(list_id, google_id)
+                local_ids_to_delete.append(local_id)
+        
+        # Remove deleted mappings
+        for local_id in local_ids_to_delete:
+            del self.sync_state['mapping'][local_id]
         
         self.sync_state['last_sync'] = datetime.now(timezone.utc).isoformat()
         self.save_sync_state()
@@ -150,6 +172,9 @@ class GoogleTasksSync:
                 # Old format compatibility
                 reverse_mapping[mapping] = local_id
         
+        # Track which Google tasks we find
+        found_google_ids = set()
+        
         # Process all task lists
         for task_list in task_lists:
             list_id = task_list['id']
@@ -168,6 +193,7 @@ class GoogleTasksSync:
                 
                 for gtask in google_tasks:
                     google_id = gtask['id']
+                    found_google_ids.add(google_id)
                     
                     if google_id in reverse_mapping:
                         # Update existing local note
@@ -185,6 +211,21 @@ class GoogleTasksSync:
                 
             except HttpError as error:
                 print(f"  ❌ Error syncing from list '{list_name}': {error}")
+        
+        # Delete local tasks that no longer exist in Google
+        local_ids_to_delete = []
+        for google_id, local_id in reverse_mapping.items():
+            if google_id not in found_google_ids:
+                # This Google task no longer exists, delete the local note
+                local_id_int = int(local_id)
+                print(f"  🗑 Deleting locally: task no longer exists in Google")
+                self.delete_local_note(local_id_int)
+                local_ids_to_delete.append(local_id)
+        
+        # Remove deleted mappings
+        for local_id in local_ids_to_delete:
+            if local_id in self.sync_state['mapping']:
+                del self.sync_state['mapping'][local_id]
         
         self.sync_state['last_sync'] = datetime.now(timezone.utc).isoformat()
         self.save_sync_state()
@@ -230,6 +271,19 @@ class GoogleTasksSync:
         except HttpError as error:
             print(f"  ❌ Error updating task: {error}")
     
+    def delete_google_task(self, list_id, google_id):
+        """Delete a task from Google Tasks"""
+        try:
+            self.service.tasks().delete(
+                tasklist=list_id,
+                task=google_id
+            ).execute()
+            
+            print(f"  ✓ Deleted from Google")
+            
+        except HttpError as error:
+            print(f"  ❌ Error deleting task: {error}")
+    
     def create_local_note(self, gtask):
         """Create a new local note from Google Task"""
         note = self.nm.add_note(gtask['title'])
@@ -258,25 +312,16 @@ class GoogleTasksSync:
                 print(f"  ✓ Updated locally: {gtask['title'][:50]}")
                 break
     
-    def bidirectional_sync(self):
-        """Perform full bidirectional sync"""
-        print("\n🔄 Starting bidirectional sync...")
-        
-        # First push local changes to Google (local changes take priority)
-        self.sync_to_google()
-        
-        # Then pull changes from Google (to get any changes made in Google)
-        self.sync_from_google()
-        
-        print("\n✅ Sync complete!")
-        print(f"Last synced: {self.sync_state.get('last_sync', 'Never')}")
+    def delete_local_note(self, local_id):
+        """Delete a local note"""
+        self.nm.notes = [note for note in self.nm.notes if note['id'] != local_id]
+        self.nm.save_notes()
 
 def main():
     import argparse
     
     parser = argparse.ArgumentParser(description='Sync notes with Google Tasks')
-    parser.add_argument('--setup', action='store_true', help='Setup Google Tasks authentication')
-    parser.add_argument('--sync', action='store_true', help='Perform bidirectional sync')
+    parser.add_argument('--setup', action='store_true', help='Initial setup - authenticate and pull from Google Tasks')
     parser.add_argument('--pull', action='store_true', help='Pull from Google Tasks only')
     parser.add_argument('--push', action='store_true', help='Push to Google Tasks only')
     
@@ -299,8 +344,8 @@ def main():
         sync.sync_from_google()
     elif args.push:
         sync.sync_to_google()
-    elif args.sync or args.setup:
-        sync.bidirectional_sync()
+    elif args.setup:
+        sync.sync_from_google()
     else:
         # Default: show status
         print("\n📊 Sync Status")
@@ -309,7 +354,7 @@ def main():
             print(f"  • {tl['title']}")
         print(f"Synced notes: {len(sync.sync_state['mapping'])}")
         print(f"Last sync: {sync.sync_state.get('last_sync', 'Never')}")
-        print("\nUse --sync to synchronize now")
+        print("\nUse --pull to sync now")
 
 if __name__ == "__main__":
     exit(main() or 0)

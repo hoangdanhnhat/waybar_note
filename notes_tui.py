@@ -4,12 +4,24 @@ Notes Manager TUI - Terminal interface for managing notes
 """
 import curses
 import sys
+import subprocess
+import socket
+import threading
+import time
 from pathlib import Path
 from datetime import datetime
 
 # Add notes_manager to path
 sys.path.insert(0, str(Path(__file__).parent))
 from notes_manager import NotesManager
+
+def check_internet_connection():
+    """Check if internet is available"""
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        return True
+    except (socket.timeout, socket.error):
+        return False
 
 class NotesTUI:
     def __init__(self, stdscr):
@@ -20,6 +32,8 @@ class NotesTUI:
         self.scroll_offset = 0
         self.input_mode = False
         self.input_buffer = ""
+        self.has_internet = check_internet_connection()
+        self.notes_modified = False  # Track if notes were changed
         
         # Initialize colors
         curses.start_color()
@@ -41,6 +55,20 @@ class NotesTUI:
             self.stdscr.timeout(100)
         except:
             pass
+        
+        # On startup: if internet, pull from Google Tasks
+        if self.has_internet:
+            self.show_syncing_message()
+            self.pull_from_google()
+            self.notes_modified = False  # Reset after pulling
+            time.sleep(0.5)  # Brief delay to let user see the message
+        else:
+            # Show warning if no internet
+            self.show_warning_dialog(
+                "No Internet Connection",
+                "Changes made locally will NOT be synced to Google Tasks",
+                "and will be LOST the next time you open the app with internet!"
+            )
     
     def get_current_notes(self):
         """Get notes for current tab"""
@@ -50,6 +78,191 @@ class NotesTUI:
             return self.nm.get_done_notes()
         else:
             return self.nm.get_all_notes()
+    
+    def pull_from_google(self):
+        """Pull tasks from Google Tasks"""
+        # Try multiple possible locations for the sync script
+        possible_paths = [
+            Path.home() / ".local/bin/google_tasks_sync.py",
+            Path(__file__).parent / "google_tasks_sync.py",
+        ]
+        
+        sync_script = None
+        for path in possible_paths:
+            if path.exists():
+                sync_script = path
+                break
+        
+        if sync_script:
+            try:
+                result = subprocess.run([str(sync_script), "--pull"], 
+                                      capture_output=True, timeout=30)
+                # Reload notes from file
+                self.nm.notes = self.nm.load_notes()
+                self.selected_idx = 0
+                self.scroll_offset = 0
+            except Exception as e:
+                # Sync failed silently, but continue with existing notes
+                pass
+        else:
+            # Sync script not found, continue with existing notes
+            pass
+    
+    def push_to_google(self):
+        """Push tasks to Google Tasks"""
+        # Try multiple possible locations for the sync script
+        possible_paths = [
+            Path.home() / ".local/bin/google_tasks_sync.py",
+            Path(__file__).parent / "google_tasks_sync.py",
+        ]
+        
+        sync_script = None
+        for path in possible_paths:
+            if path.exists():
+                sync_script = path
+                break
+        
+        if sync_script:
+            try:
+                subprocess.run([str(sync_script), "--push"], 
+                             capture_output=True, timeout=30)
+            except Exception as e:
+                # Log the error even if we can't display it
+                pass
+        else:
+            # Script not found at any expected location
+            pass
+    
+    def show_warning_dialog(self, title, line1, line2):
+        """Show a warning dialog that pauses for user to read"""
+        height, width = self.stdscr.getmaxyx()
+        
+        # Loop until ENTER or Q is pressed
+        while True:
+            self.stdscr.erase()
+            
+            # Draw warning box
+            box_width = min(70, width - 4)
+            box_height = 11
+            start_x = (width - box_width) // 2
+            start_y = (height - box_height) // 2
+            
+            # Draw border
+            self.stdscr.attron(curses.color_pair(5) | curses.A_BOLD)
+            for i in range(box_height):
+                self.stdscr.addstr(start_y + i, start_x, "║" + " " * (box_width - 2) + "║")
+            self.stdscr.addstr(start_y, start_x, "╔" + "═" * (box_width - 2) + "╗")
+            self.stdscr.addstr(start_y + box_height - 1, start_x, "╚" + "═" * (box_width - 2) + "╝")
+            self.stdscr.attroff(curses.color_pair(5) | curses.A_BOLD)
+            
+            # Draw title
+            self.stdscr.attron(curses.color_pair(5) | curses.A_BOLD)
+            title_x = start_x + (box_width - len(title)) // 2
+            self.stdscr.addstr(start_y + 1, title_x, title)
+            self.stdscr.attroff(curses.color_pair(5) | curses.A_BOLD)
+            
+            # Draw message
+            msg_y = start_y + 3
+            self.stdscr.addstr(msg_y, start_x + 2, line1[:box_width - 4])
+            self.stdscr.addstr(msg_y + 1, start_x + 2, line2[:box_width - 4])
+            
+            # Draw instruction
+            instr = "Press ENTER to continue or Q to quit"
+            instr_x = start_x + (box_width - len(instr)) // 2
+            self.stdscr.attron(curses.A_DIM)
+            self.stdscr.addstr(start_y + box_height - 2, instr_x, instr)
+            self.stdscr.attroff(curses.A_DIM)
+            
+            self.stdscr.refresh()
+            key = self.stdscr.getch()  # Wait for key press
+            
+            if key == 10 or key == curses.KEY_ENTER:  # ENTER key
+                break
+            elif key == ord('q') or key == ord('Q'):  # Q key - quit
+                sys.exit(0)
+    
+    def show_info_message(self, message):
+        """Show a brief info message"""
+        height, width = self.stdscr.getmaxyx()
+        self.stdscr.erase()
+        msg_x = (width - len(message)) // 2
+        msg_y = height // 2
+        self.stdscr.attron(curses.color_pair(4))
+        self.stdscr.addstr(msg_y, msg_x, message)
+        self.stdscr.attroff(curses.color_pair(4))
+        self.stdscr.refresh()
+    
+    def show_syncing_message(self):
+        """Show syncing message with loading animation"""
+        height, width = self.stdscr.getmaxyx()
+        self.stdscr.erase()
+        
+        message = "Syncing from Google Tasks..."
+        msg_x = (width - len(message)) // 2
+        msg_y = height // 2
+        
+        self.stdscr.attron(curses.color_pair(4))
+        self.stdscr.addstr(msg_y, msg_x, message)
+        self.stdscr.attroff(curses.color_pair(4))
+        self.stdscr.refresh()
+    
+    def show_warning_on_close(self):
+        """Show warning when closing without internet"""
+        height, width = self.stdscr.getmaxyx()
+        
+        # Loop until ENTER is pressed
+        while True:
+            self.stdscr.erase()
+            
+            # Draw warning box
+            box_width = min(75, width - 4)
+            box_height = 12
+            start_x = (width - box_width) // 2
+            start_y = (height - box_height) // 2
+            
+            # Draw border
+            self.stdscr.attron(curses.color_pair(5) | curses.A_BOLD)
+            for i in range(box_height):
+                self.stdscr.addstr(start_y + i, start_x, "║" + " " * (box_width - 2) + "║")
+            self.stdscr.addstr(start_y, start_x, "╔" + "═" * (box_width - 2) + "╗")
+            self.stdscr.addstr(start_y + box_height - 1, start_x, "╚" + "═" * (box_width - 2) + "╝")
+            self.stdscr.attroff(curses.color_pair(5) | curses.A_BOLD)
+            
+            # Draw title
+            title = "No Internet Connection"
+            self.stdscr.attron(curses.color_pair(5) | curses.A_BOLD)
+            title_x = start_x + (box_width - len(title)) // 2
+            self.stdscr.addstr(start_y + 1, title_x, title)
+            self.stdscr.attroff(curses.color_pair(5) | curses.A_BOLD)
+            
+            # Draw message
+            msg_y = start_y + 3
+            lines = [
+                "All changes made locally will be LOST",
+                "the next time you open the app with",
+                "an internet connection!"
+            ]
+            for i, line in enumerate(lines):
+                self.stdscr.addstr(msg_y + i, start_x + 2, line[:box_width - 4])
+            
+            # Draw note
+            note = "Notes are saved locally for waybar widget usage."
+            self.stdscr.attron(curses.A_DIM)
+            self.stdscr.addstr(msg_y + 4, start_x + 2, note[:box_width - 4])
+            self.stdscr.attroff(curses.A_DIM)
+            
+            # Draw instruction
+            instr = "Press ENTER to exit"
+            instr_x = start_x + (box_width - len(instr)) // 2
+            self.stdscr.attron(curses.A_DIM)
+            self.stdscr.addstr(start_y + box_height - 2, instr_x, instr)
+            self.stdscr.attroff(curses.A_DIM)
+            
+            self.stdscr.refresh()
+            key = self.stdscr.getch()  # Wait for key press
+            
+            if key == 10 or key == curses.KEY_ENTER:  # ENTER key
+                break
     
     def draw_header(self):
         """Draw the header with tabs"""
@@ -150,7 +363,7 @@ class NotesTUI:
             self.stdscr.addstr(height - 2, 2, "New note: " + self.input_buffer + "█")
             self.stdscr.addstr(height - 1, 2, "Enter: Save | Esc: Cancel", curses.A_DIM)
         else:
-            help_text = "↑/↓: Navigate | Tab: Switch view | Space: Toggle | N: New | D: Delete | Q: Quit"
+            help_text = "↑/↓: Navigate | Tab: Switch | Space: Toggle | N: New | D: Delete | Q: Quit"
             if len(help_text) <= width - 4:
                 self.stdscr.addstr(height - 2, 2, help_text, curses.A_DIM)
             
@@ -177,6 +390,7 @@ class NotesTUI:
             elif key == 10 or key == curses.KEY_ENTER:  # Enter
                 if self.input_buffer.strip():
                     self.nm.add_note(self.input_buffer.strip())
+                    self.notes_modified = True
                     self.input_buffer = ""
                 self.input_mode = False
                 curses.curs_set(0)
@@ -205,6 +419,7 @@ class NotesTUI:
                 if notes:
                     note = notes[self.selected_idx]
                     self.nm.toggle_note(note['id'])
+                    self.notes_modified = True
             elif key == ord('n') or key == ord('N'):
                 self.input_mode = True
                 self.input_buffer = ""
@@ -212,6 +427,7 @@ class NotesTUI:
                 if notes:
                     note = notes[self.selected_idx]
                     self.nm.delete_note(note['id'])
+                    self.notes_modified = True
                     if self.selected_idx >= len(self.get_current_notes()):
                         self.selected_idx = max(0, len(self.get_current_notes()) - 1)
         
@@ -222,32 +438,49 @@ class NotesTUI:
         running = True
         last_state = None
         
-        while running:
-            # Only redraw if something changed
-            current_state = (
-                self.current_tab,
-                self.selected_idx,
-                self.scroll_offset,
-                self.input_mode,
-                self.input_buffer,
-                len(self.get_current_notes())
-            )
-            
-            if current_state != last_state:
-                self.stdscr.erase()  # Use erase() instead of clear()
+        try:
+            while running:
+                # Only redraw if something changed
+                current_state = (
+                    self.current_tab,
+                    self.selected_idx,
+                    self.scroll_offset,
+                    self.input_mode,
+                    self.input_buffer,
+                    len(self.get_current_notes())
+                )
                 
-                try:
-                    self.draw_header()
-                    self.draw_notes()
-                    self.draw_footer()
-                    self.stdscr.refresh()
-                    last_state = current_state
-                except KeyboardInterrupt:
-                    running = False
+                if current_state != last_state:
+                    self.stdscr.erase()  # Use erase() instead of clear()
+                    
+                    try:
+                        self.draw_header()
+                        self.draw_notes()
+                        self.draw_footer()
+                        self.stdscr.refresh()
+                        last_state = current_state
+                    except KeyboardInterrupt:
+                        running = False
+                
+                running = self.handle_input() and running
+        finally:
+            # On app close: if internet AND notes were modified, push to Google Tasks
+            curses.curs_set(1)  # Show cursor before exit
+            self.stdscr.erase()
+            self.stdscr.refresh()
             
-            running = self.handle_input() and running
-        
-        curses.curs_set(1)  # Show cursor before exit
+            if self.has_internet and self.notes_modified:
+                # Show syncing message briefly then exit
+                self.show_info_message("Syncing changes to Google Tasks...")
+                # Run sync in background thread
+                sync_thread = threading.Thread(target=self.push_to_google, daemon=False)
+                sync_thread.start()
+                # Wait for sync to complete (with timeout)
+                sync_thread.join(timeout=35)  # Slightly longer than subprocess timeout
+            else:
+                # No changes or no internet, just close
+                if not self.has_internet:
+                    self.show_warning_on_close()
 
 def main(stdscr):
     tui = NotesTUI(stdscr)

@@ -11,6 +11,10 @@ A sleek, efficient notes/task manager for Waybar that helps you stay on top of y
 - **Vim-style navigation**: j/k or arrow keys for navigation
 - **Persistent storage**: JSON-based storage in ~/.config/waybar-notes
 - **Smooth updates**: Real-time updates every second
+- **Google Tasks Sync**: Bidirectional sync with Google Tasks (optional)
+- **Smart Syncing**: Only syncs when you make changes, not when just viewing
+- **Auto-pull on startup**: Automatically syncs from Google Tasks when opening TUI
+- **Auto-push on close**: Syncs changes back to Google Tasks when closing TUI
 
 ## Installation
 
@@ -199,3 +203,6 @@ This project is released into the public domain. Feel free to use, modify, and d
 - Use the Undone view to focus on what needs to be done
 - Press `Tab` repeatedly to quickly switch between views
 - The cycling helps you remember tasks you might have forgotten
+- The TUI automatically syncs with Google Tasks on startup and when closing (if you made changes)
+- If no changes were made, the TUI closes instantly without syncing
+- Works offline - all changes are saved locally and synced on next connection
